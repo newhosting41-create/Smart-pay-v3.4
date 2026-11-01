@@ -70,7 +70,7 @@ class SyncForegroundService : Service() {
 
         val (recent, success, failed) = AppStorage.getTodayCounters(this)
         val initText = "Incoming Payment SMS will be monitored.\nRecent: $recent | Success: $success | Failed: $failed"
-        startForeground(NOTIF_ID, buildNotification("Pay Sync is Running", initText))
+        startForeground(NOTIF_ID, buildNotification("Pay KureGhor is Running", initText))
 
         registerDynamicSmsReceiver()
         registerSmsDatabaseObserver()
@@ -80,7 +80,7 @@ class SyncForegroundService : Service() {
                 scanInboxForOfficialBkashSms()
                 retryPendingAndSyncStatuses()
                 AppStorage.runAutoCleanupIfNeeded(this@SyncForegroundService)
-                delay(8_000L)
+                delay(10_000L)
             }
         }
     }
@@ -115,7 +115,7 @@ class SyncForegroundService : Service() {
                 override fun onChange(selfChange: Boolean) {
                     super.onChange(selfChange)
                     serviceScope.launch {
-                        delay(800L)
+                        delay(1000L)
                         scanInboxForOfficialBkashSms()
                     }
                 }
@@ -198,7 +198,7 @@ class SyncForegroundService : Service() {
     private fun acquireWakeLock() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Paysync::WakeLock").apply {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PayKureGhor::WakeLock").apply {
                 setReferenceCounted(false)
                 acquire()
             }
@@ -211,7 +211,7 @@ class SyncForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Pay Sync is Running")
+            .setContentTitle("Pay KureGhor is Running")
             .setContentText(shortText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setSmallIcon(android.R.drawable.stat_notify_sync)
