@@ -4,12 +4,6 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
-/**
- * When Google Messages posts a notification, NEVER trust the notification title alone
- * (because someone could save a fake contact as "bKash").
- * Instead, use this event as an instant 0.5-second trigger to read the real hardware
- * Telephony SMS Inbox (`content://sms/inbox`), which strictly verifies the real network `address == "bKash"`!
- */
 class SmsNotificationListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -20,11 +14,20 @@ class SmsNotificationListener : NotificationListenerService() {
         val extras = sbn.notification?.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim() ?: ""
 
-        // If a notification looks like bKash, trigger an immediate hardware SMS Inbox check
-        // so only real network sender "bKash" from Telephony DB is accepted!
-        if (title.equals("bKash", ignoreCase = true) || text.contains("TrxID", ignoreCase = true)) {
-            SyncForegroundService.start(applicationContext, retryNow = true)
+        val fullBody = if (bigText.length >= text.length && bigText.isNotEmpty()) bigText else text
+        if (fullBody.isEmpty()) return
+
+        // If notification is from bKash / Google Messages bKash thread
+        if (SmsParser.isAllowedSender(title) || fullBody.contains("You have received Tk", ignoreCase = true)) {
+            val record = SmsParser.parseIncomingOrManual("bKash", fullBody, "Notification")
+            if (record != null) {
+                val isNew = AppStorage.insertIfNew(this, record)
+                if (isNew) {
+                    SmsReceiver.uploadRecordImmediately(applicationContext, record)
+                }
+            }
         }
     }
 }
