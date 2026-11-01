@@ -28,7 +28,7 @@ class SmsReceiver : BroadcastReceiver() {
                 )
 
                 val notification = NotificationCompat.Builder(context, SyncForegroundService.CHANNEL_ID)
-                    .setContentTitle("Pay Sync is Running")
+                    .setContentTitle("Pay KureGhor is Running")
                     .setContentText(lastEventText)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
                     .setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -52,7 +52,7 @@ class SmsReceiver : BroadcastReceiver() {
                 var wl: PowerManager.WakeLock? = null
                 try {
                     val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                    wl = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Paysync:UploadWakeLock")?.apply {
+                    wl = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PayKureGhor:UploadWakeLock")?.apply {
                         acquire(30_000L)
                     }
 
@@ -91,6 +91,8 @@ class SmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         if (!AppStorage.isLoggedIn(context)) return
 
+        val pendingResult = goAsync()
+
         var senderAddress = ""
         val messageBuilder = StringBuilder()
 
@@ -103,8 +105,8 @@ class SmsReceiver : BroadcastReceiver() {
                 messageBuilder.append(sms.displayMessageBody ?: sms.messageBody ?: "")
             }
         } else {
-            val bundle = intent.extras ?: return
-            val pdus = bundle.get("pdus") as? Array<*> ?: return
+            val bundle = intent.extras ?: run { pendingResult.finish(); return }
+            val pdus = bundle.get("pdus") as? Array<*> ?: run { pendingResult.finish(); return }
             for (pdu in pdus) {
                 val bytes = pdu as? ByteArray ?: continue
                 val sms = SmsMessage.createFromPdu(bytes) ?: continue
@@ -116,14 +118,22 @@ class SmsReceiver : BroadcastReceiver() {
         }
 
         val fullBody = messageBuilder.toString()
-        if (!SmsParser.isStrictOfficialBkashHeader(senderAddress)) return
+        if (!SmsParser.isStrictOfficialBkashHeader(senderAddress)) {
+            pendingResult.finish()
+            return
+        }
 
-        val record = SmsParser.parseIncomingOrManual(senderAddress, fullBody, "Auto") ?: return
+        val record = SmsParser.parseIncomingOrManual(senderAddress, fullBody, "Auto") ?: run {
+            pendingResult.finish()
+            return
+        }
+
         val isNew = AppStorage.insertIfNew(context, record)
         if (isNew) {
             context.sendBroadcast(Intent(ACTION_UI_REFRESH).setPackage(context.packageName))
-            val pendingResult = goAsync()
             uploadRecordImmediately(context.applicationContext, record, pendingResult)
+        } else {
+            pendingResult.finish()
         }
     }
 }
