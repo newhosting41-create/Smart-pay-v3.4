@@ -15,39 +15,25 @@ data class SmsRecord(
     val trxId: String,
     val smsTimeStr: String,
     val message: String,
-    var status: String, // "Pending", "Success", "Failed", "Used", "Flagged"
+    var status: String, 
     val time: Long,
     val dateText: String,
-    val source: String, // "Auto", "Inbox", "Manual"
+    val source: String, 
     var serverNote: String = ""
 )
 
 object SmsParser {
-    // STRICT SECURITY: Only official bKash sender header is allowed (Never personal phone numbers like 017... or +8801...)
-    private val STRICT_OFFICIAL_SENDERS = setOf("bkash", "16216")
+    // Google Messages / Android SMS app often prefixes or suffixes sender titles (e.g. "bKash Messages")
+    private val VALID_SENDER_KEYS = listOf("bkash", "16216")
 
     private val IGNORED_PHRASES = listOf(
-        "Cash-Out",
-        "Cash out",
-        "Payment to",
-        "Your bKash verification",
-        "<#> NEVER share",
-        "Never Share",
-        "Your One Time Password",
-        "Your security code",
-        "Send Money",
-        "Add Money",
-        "Mobile Recharge",
-        "Received Recharge",
-        "Your bKash Mobile Recharge",
-        "Bill successfully paid",
-        "Your Digital Loan",
-        "Savings",
-        "Priyo Numbers",
-        "Congratulations"
+        "Cash-Out", "Cash out", "Payment to", "Your bKash verification",
+        "<#> NEVER share", "Never Share", "Your One Time Password", "Your security code",
+        "Send Money", "Add Money", "Mobile Recharge", "Received Recharge",
+        "Your bKash Mobile Recharge", "Bill successfully paid", "Your Digital Loan",
+        "Savings", "Priyo Numbers", "Congratulations"
     )
 
-    // Exact regex from your server's payment/bkash_sms_sync.php
     private val SERVER_BKASH_REGEX = Regex(
         """^You have received Tk\s*([\d,]+(?:\.\d{2})?)\s+from\s+(01\d{9})\.?(?:\s+Ref\s+[^\r\n]*?\.)?\s+(?:Fee|Commission)\s+Tk\s*([\d,]+(?:\.\d{2})?)\.\s+Balance\s+Tk\s*([\d,]+(?:\.\d{2})?)\.\s+TrxID\s+([A-Z0-9]{10})\s+at\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*$""",
         RegexOption.IGNORE_CASE
@@ -58,18 +44,11 @@ object SmsParser {
     private val FALLBACK_FROM_REGEX = Regex("""from\s+(01\d{9})""", RegexOption.IGNORE_CASE)
     private val FALLBACK_TIME_REGEX = Regex("""(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})""")
 
-    /**
-     * Strictly verifies that the SMS originating address is the official "bKash" (or "16216") header.
-     * Any personal mobile number (e.g., +8801..., 01...) is strictly rejected to prevent fake SMS spoofing!
-     */
-    fun isStrictOfficialBkashHeader(address: String?): Boolean {
-        if (address.isNullOrBlank()) return false
-        val clean = address.trim()
-        // Reject any standard mobile phone number immediately
-        if (clean.startsWith("+") || clean.startsWith("880") || clean.startsWith("01") || clean.length > 10) {
-            return false
-        }
-        return STRICT_OFFICIAL_SENDERS.contains(clean.lowercase(Locale.ROOT))
+    fun isAllowedSender(sender: String?): Boolean {
+        if (sender.isNullOrBlank()) return false
+        val clean = sender.trim().lowercase(Locale.ROOT)
+        // Checks if title contains bkash or 16216 (handles "bKash", "bKash Messages", etc.)
+        return VALID_SENDER_KEYS.any { clean.contains(it) }
     }
 
     fun isIgnoredMessage(body: String): Boolean {
@@ -80,10 +59,6 @@ object SmsParser {
     }
 
     fun parseIncomingOrManual(rawAddress: String, rawBody: String, source: String = "Auto"): SmsRecord? {
-        if (source != "Manual" && !isStrictOfficialBkashHeader(rawAddress)) {
-            return null
-        }
-
         val normalized = rawBody.replace(Regex("""\r?\n"""), " ").replace(Regex("""\s+"""), " ").trim()
         if (normalized.isEmpty() || isIgnoredMessage(normalized)) return null
 
